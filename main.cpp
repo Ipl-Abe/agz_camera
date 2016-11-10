@@ -47,25 +47,28 @@ ofstream ofs("out4.csv");
 int main(int argc, char *argv[])
 {
 	//@comment 動画の読み込み
-	VideoCapture video("./test2.MP4");
-	if (!video.isOpened())
-	{
-		return -1;
-	}
+	//VideoCapture video("./test2.MP4");
+	//if (!video.isOpened())
+	//{
+		//return -1;
+	//}
+	VideoCapture cap(1);
+	if (!cap.isOpened()) return -1;
+
 	namedWindow("src", 1);
-	namedWindow("dst",1);
+	namedWindow("dst", 1);
 	namedWindow("video", 1);
-	namedWindow("test1",1);
-	namedWindow("binari",1);
-	
-	video >> src_frame;
-	resize(src_frame, src_img, Size(src_img_cols, src_img_rows), CV_8UC3);
+	namedWindow("test1", 1);
+	namedWindow("binari", 1);
+
+	cap >> src_frame;
+	//resize(src_frame, src_img, Size(src_img_cols, src_img_rows), CV_8UC3);
 	//src_img = undist(src_img) ; //@comment カメラの歪みをとる(GoPro魚眼)
 	//------------------座標取得-----------------------------------------------
 	//@comment 画像中からマウスで4点を取得その後ESCキーを押すと変換処理が開始する
 
 	namedWindow("getCoordinates");
-	imshow("getCoordinates", src_img);
+	imshow("getCoordinates", src_frame);
 	//@comment 変換したい四角形の四隅の座標をとる(クリック)
 	cvSetMouseCallback("getCoordinates", getCoordinates, NULL);
 	waitKey(0);
@@ -84,7 +87,7 @@ int main(int argc, char *argv[])
 	Mat dst_img, colorExtra;
 
 	//@comment 変換(線形補完)
-	warpPerspective(src_img, dst_img, perspective_matrix, src_img.size(), INTER_LINEAR);
+	warpPerspective(src_frame, dst_img, perspective_matrix, src_img.size(), INTER_LINEAR);
 
 	//@comment 変換前後の座標を描画
 	line(src_img, pts1[0], pts1[1], Scalar(255, 0, 255), 2, CV_AA);
@@ -96,20 +99,20 @@ int main(int argc, char *argv[])
 	line(src_img, pts2[2], pts2[3], Scalar(255, 255, 0), 2, CV_AA);
 	line(src_img, pts2[3], pts2[0], Scalar(255, 255, 0), 2, CV_AA);
 
-	namedWindow("plotCoordinates",1);
-	imshow("plotCoordinates",src_img);
+	namedWindow("plotCoordinates", 1);
+	imshow("plotCoordinates", src_frame);
 
 	namedWindow("dst", 1);
 	imshow("dst", dst_img);
 	int frame = 0;
 	while (1){
 
-		video >> src_frame;
+		cap >> src_frame;
 
 		if (frame % 10 == 0){
 
 			//@comment 画像をリサイズ(大きすぎるとディスプレイに入りらないため)
-			resize(src_frame, src_frame, Size(src_img_cols, src_img_rows), CV_8UC3);
+			//resize(src_frame, src_frame, Size(src_img_cols, src_img_rows), CV_8UC3);
 			//src_frame = undist(src_frame); //@comment カメラの歪みをとる(GoPro魚眼)
 
 			//}
@@ -153,8 +156,10 @@ int main(int argc, char *argv[])
 			}
 			//cout << flag<<endl;
 			//@comment 重心点のプロット 
-			//画像，円の中心座標，半径，色(青)，線太さ，種類(-1, CV_AAは塗りつぶし) 
-			circle(dst_img, Point(point.x, point.y + 6 * ((1000 / point.y)+1)), 5, Scalar(200, 0, 0), -1, CV_AA);
+			//画像，円の中心座標，半径，色(青)，線太さ，種類(-1, CV_AAは塗りつぶし)
+			if (!point.y == 0){
+				circle(dst_img, Point(point.x, point.y + 6 * ((1000 / point.y) + 1)), 5, Scalar(200, 0, 0), -1, CV_AA);
+			}
 
 
 			//---------------------表示部分----------------------------------------------
@@ -185,8 +190,8 @@ int main(int argc, char *argv[])
 		//destroyAllWindows();
 		frame++;
 	}
-		ofs.close();
-	
+	ofs.close();
+
 }
 
 
