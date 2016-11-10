@@ -121,6 +121,15 @@ int main(int argc, char *argv[])
 		int x, y;
 		uchar r1, g1, b1, d;
 		Vec3b color1;
+
+		colorExtraction(&dst_img, &colorExtra, CV_BGR2HSV, 150, 180, 70, 255, 70, 255);
+		cvtColor(colorExtra,colorExtra,CV_BGR2GRAY);
+		//cvThreshold(colorExtra,colorExtra,128,255,CV_THRESH_BINARY);
+		namedWindow("test2", 1);
+		imshow("test2", colorExtra);
+
+		//threshold(colorExtra, colorExtra, 0, 255, THRESH_BINARY_INV);
+
 		image1 = Mat(Size(dst_img.cols, dst_img.rows), CV_8UC1);
 		for (y = 0; y < dst_img.rows; y++){
 			for (x = 0; x < dst_img.cols; x++){
@@ -132,6 +141,8 @@ int main(int argc, char *argv[])
 				image1.at<uchar>(y, x) = d;
 			}
 		}
+		namedWindow("test1", 1);
+		imshow("test1", image1);
 
 
 		//２値化
@@ -143,20 +154,17 @@ int main(int argc, char *argv[])
 			setTrackbarPos("value", "binari", 0);
 			//@comment hsvを使用して赤色を抽出
 			//入力画像、出力画像、変換、h最小値、h最大値、s最小値、s最大値、v最小値、v最大値、
-			colorExtraction(&dst_img, &colorExtra, CV_BGR2HSV, 150, 180, 70,255 , 70, 255);
-			threshold(colorExtra,colorExtra,0,255,THRESH_BINARY_INV);
+
 
 			std::cout << "width: " << colorExtra.cols << std::endl;
 			std::cout << "height: " << colorExtra.rows << std::endl;
-			for (int i = 0; i < colorExtra.cols; i++){
+		/*	for (int i = 0; i < colorExtra.cols; i++){
 				for (int j = 0; j < colorExtra.rows; j++){
 					std::cout << "画素 " << colorExtra.at<cv::Vec3b>(j, i)<<std::endl;
 				}
-			}
+			}*/
 
 		}
-
-
 
 
 		Mat binari_2;
@@ -206,8 +214,8 @@ int main(int argc, char *argv[])
 		cv::imshow("test", image1);
 
 		//----------------------二値化-----------------------------------------------
-		threshold(image1, binari_2, 0, 255, THRESH_BINARY);
-		binari_2 = ~binari_2;//ネガポジ
+		threshold(colorExtra, binari_2, 0, 255, THRESH_BINARY);
+		//binari_2 = ~binari_2;//ネガポジ
 		dilate(binari_2, binari_2, element, Point(-1, -1), 3); //膨張処理3回 最後の引数で回数を設定
 
 		//---------------------重心取得---------------------------------------------
@@ -219,7 +227,6 @@ int main(int argc, char *argv[])
 
 		// 画像，円の中心座標，半径，色，線太さ，種類(-1, CV_AAは塗りつぶし) 
 		circle(dst_img, Point(point.x, point.y), 5, Scalar(0, 0, 200), -1, CV_AA);
-
 
 
 		//---------------------表示部分----------------------------------------------
@@ -418,6 +425,8 @@ void colorExtraction(cv::Mat* src, cv::Mat* dst,
 	}
 		//LUTを使用して二値化
 		cv::LUT(colorImage, lut, colorImage);
+
+		//namedWindow("colorImage", 1);
 
 		//Channel毎に分解
 		std::vector<cv::Mat> planes;
