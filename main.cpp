@@ -42,7 +42,7 @@ int flag = 0;
 int ct = 0;
 Mat dst_img, colorExtra;
 
-ofstream ofs("out.csv");
+ofstream ofs("out4.csv");
 
 int main(int argc, char *argv[])
 {
@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
 	
 	video >> src_frame;
 	resize(src_frame, src_img, Size(src_img_cols, src_img_rows), CV_8UC3);
-
+	//src_img = undist(src_img) ; //@comment カメラの歪みをとる(GoPro魚眼)
 	//------------------座標取得-----------------------------------------------
 	//@comment 画像中からマウスで4点を取得その後ESCキーを押すと変換処理が開始する
 
@@ -96,22 +96,24 @@ int main(int argc, char *argv[])
 	line(src_img, pts2[2], pts2[3], Scalar(255, 255, 0), 2, CV_AA);
 	line(src_img, pts2[3], pts2[0], Scalar(255, 255, 0), 2, CV_AA);
 
+	namedWindow("plotCoordinates",1);
+	imshow("plotCoordinates",src_img);
 
-
+	namedWindow("dst", 1);
+	imshow("dst", dst_img);
+	int frame = 0;
 	while (1){
+
 		video >> src_frame;
-		//if (flag == 0){
-			//flag = 1;
 
-
-			// in_img = undist(in_img) ; //@comment カメラの歪みをとる(GoPro魚眼)
+		if (frame % 10 == 0){
 
 			//@comment 画像をリサイズ(大きすぎるとディスプレイに入りらないため)
-			resize(src_frame, dst_img, Size(src_img_cols, src_img_rows), CV_8UC3);
+			resize(src_frame, src_frame, Size(src_img_cols, src_img_rows), CV_8UC3);
+			//src_frame = undist(src_frame); //@comment カメラの歪みをとる(GoPro魚眼)
 
-
-		//}
-	//else{
+			//}
+			//else{
 			//--------------------グレースケール化---------------------------------------
 
 			//(2) RGB値設定 
@@ -120,6 +122,7 @@ int main(int argc, char *argv[])
 			Vec3b color1;
 			//@comment hsvを利用して赤色を抽出
 			//入力画像、出力画像、変換、h最小値、h最大値、s最小値、s最大値、v最小値、v最大値
+			warpPerspective(src_frame, dst_img, perspective_matrix, src_frame.size(), INTER_LINEAR);
 			colorExtraction(&dst_img, &colorExtra, CV_BGR2HSV, 150, 180, 70, 255, 70, 255);
 			cvtColor(colorExtra, colorExtra, CV_BGR2GRAY);//@comment グレースケールに変換
 
@@ -144,13 +147,14 @@ int main(int argc, char *argv[])
 			Point2i point = calculate_center(binari_2);//@comment momentで白色部分の重心を求める
 			cout << "posion: " << point.x << " " << point.y << endl;//@comment 重心点の表示
 			if (point.x != 0){
-				cout << point.x << " " << src_img_rows - point.y << endl; //@comment 変換画像中でのロボットの座標(重心)
-				ofs << point.x << " " << src_img_rows - point.y << endl; //@comment 変換
+				int ypos = src_img_rows - (point.y + 6 * ((1000 / point.y) + 1));
+				cout << point.x << " " << ypos << endl; //@comment 変換画像中でのロボットの座標(重心)
+				ofs << point.x << ", " << ypos << endl; //@comment 変換
 			}
 			//cout << flag<<endl;
 			//@comment 重心点のプロット 
 			//画像，円の中心座標，半径，色(青)，線太さ，種類(-1, CV_AAは塗りつぶし) 
-			circle(dst_img, Point(point.x, point.y), 5, Scalar(200, 0, 0), -1, CV_AA);
+			circle(dst_img, Point(point.x, point.y + 6 * ((1000 / point.y)+1)), 5, Scalar(200, 0, 0), -1, CV_AA);
 
 
 			//---------------------表示部分----------------------------------------------
@@ -163,24 +167,26 @@ int main(int argc, char *argv[])
 			imshow("video", src_frame);
 
 			//namedWindow("dst");
-			imshow("test1",dst_img);//@comment 出力画像
+			imshow("test1", dst_img);//@comment 出力画像
 
 			//namedWindow("colorExt");
 			imshow("colorExt", colorExtra);//@comment 赤抽出画像
-			
+
 			//cout << "frame" << ct++ << endl;
 
-			if (src_frame.empty() || waitKey(30)>=0)
+			if (src_frame.empty() || waitKey(30) >= 0)
 			{
-				break;
+				destroyAllWindows();
+				return 0;
 			}
 
 		}
-	//}
-	//destroyAllWindows();
-
-	ofs.close();
-
+		//}
+		//destroyAllWindows();
+		frame++;
+	}
+		ofs.close();
+	
 }
 
 
@@ -192,7 +198,7 @@ double get_points_distance(Point2i point, Point2i pre_point){
 		+ (point.y - pre_point.y) * (point.y - pre_point.y));
 }
 
-//@commentトラックバー操作エベントに応じた処理
+//@commentトラックバー操作イベントに応じた処理
 void onTrackbarChanged(int thres, void*)
 {
 
