@@ -37,6 +37,9 @@ int flag = 0;
 Mat dst_img, colorExtra;
 
 ofstream ofs("out4.csv");
+//@動画出力用変数
+const string  str = "test.avi";
+
 
 int main(int argc, char *argv[])
 {
@@ -46,6 +49,10 @@ int main(int argc, char *argv[])
 	cap.set(CV_CAP_PROP_FRAME_WIDTH, 640); //@comment webカメラの横幅を設定
 	cap.set(CV_CAP_PROP_FRAME_HEIGHT,480); //@comment webカメラの縦幅を設定
 	if (!cap.isOpened()) return -1; //@comment 呼び出しミスがあれば終了
+
+	VideoWriter write("out2.avi", CV_FOURCC('M','J','P','G'), cap.get(CV_CAP_PROP_FPS),
+					   cv::Size(src_frame.rows, src_frame.cols),true);
+	if (!write.isOpened()) return -1;
 
 	namedWindow("src", 1);
 	namedWindow("dst", 1);
@@ -148,11 +155,38 @@ int main(int argc, char *argv[])
 
 			//---------------------表示部分----------------------------------------------
 
+			//選択した四隅を線で結ぶ
+			//line(dst_img, Point(Ax, Ay), Point(Bx, By), Scalar(200, 0, 0), 3);
+			//line(dst_img, Point(Bx, By), Point(Cx, Cy), Scalar(0, 200, 0), 3);
+			//line(dst_img, Point(Cx, Cy), Point(Dx, Dy), Scalar(200, 0, 0), 3);
+			//line(dst_img, Point(Dx, Dy), Point(Ax, Ay), Scalar(0, 200, 0), 3);
+
+			//imshow("drawing", src_img);
+			//---------------------変換後の画像に1m四方の升目形成----------------------------
+
+			//imshow("dst_img", dst_img);
+
+			//Mat Eximg = dst_img;
+
+			for (int i = 0; i <= src_img_cols; i += 100){
+				for (int j = 0; j <= src_img_rows; j += 100){
+
+					line(dst_img, Point(i, j), Point(i, src_img_cols), Scalar(200, 200, 200), 3);
+					line(dst_img, Point(i, j), Point(src_img_rows, j), Scalar(200, 200, 200), 3);
+				}
+			}
+
+			//内側領域と外側領域の作成
+			line(dst_img, Point(100, 100), Point(100, src_img_cols), Scalar(200, 0, 0), 2);
+			line(dst_img, Point(100, 100), Point(src_img_rows, 100), Scalar(200, 0, 0), 2);
+			line(dst_img, Point(src_img_rows, 100), Point(src_img_rows, src_img_cols), Scalar(200, 0, 0), 2);
+			line(dst_img, Point(100, src_img_cols-100), Point(src_img_rows, src_img_cols-100), Scalar(200, 0, 0), 2);
+		
 			//imshow("video", src_frame);
 			imshow("red_point", dst_img);//@comment 出力画像
 			imshow("colorExt", colorExtra);//@comment 赤抽出画像
 			//cout << "frame" << ct++ << endl; //@comment frame数表示
-
+			//write << dst_img;
 			if (src_frame.empty() || waitKey(30) >= 0)
 			{
 				destroyAllWindows();
@@ -160,6 +194,7 @@ int main(int argc, char *argv[])
 			}
 		}
 		frame++;
+		write << dst_img;
 	}
 	ofs.close(); //@comment ファイルストリームの解放
 }
