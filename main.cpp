@@ -1,14 +1,14 @@
 #include <iostream>
 #include <vector>
 #include <fstream>
-
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/opencv.hpp>
 
-static const int src_img_cols = 300; //width
-static const int src_img_rows = 300; //height
+
+int src_img_cols = 0; //width
+int src_img_rows = 0; //height
 
 
 using namespace cv;
@@ -56,12 +56,16 @@ int depth;
 int main(int argc, char *argv[])
 {
 
-	cout << "please type width and depth of field (m)" << endl << "width : ";
-	cin >> width;
+	cout << "please enter width and depth of field (m)" << endl << "width : ";
+	cin >> src_img_cols;
 	cout << "depth : ";
-	cin >> depth;
+	cin >> src_img_rows;
 
-	
+	if (src_img_cols < 300 || src_img_rows < 300)
+	{
+		cout << "please enter a number more than 3(m)" << endl;
+		return -1;
+	}
 
 	//@comment カメラの呼び出し pcのカメラ : 0 webカメラ : 1 
 	VideoCapture cap(1);
@@ -69,9 +73,9 @@ int main(int argc, char *argv[])
 	cap.set(CV_CAP_PROP_FRAME_HEIGHT, 480); //@comment webカメラの縦幅を設定
 	if (!cap.isOpened()) return -1; //@comment 呼び出しミスがあれば終了
 
-	VideoWriter write("out2.avi", CV_FOURCC('M', 'J', 'P', 'G'), cap.get(CV_CAP_PROP_FPS),
-		cv::Size(src_frame.rows, src_frame.cols), true);
-	if (!write.isOpened()) return -1;
+	//VideoWriter write("out2.avi", CV_FOURCC('M', 'J', 'P', 'G'), cap.get(CV_CAP_PROP_FPS),
+		//cv::Size(, src_img_cols), true);
+	//if (!write.isOpened()) return -1;
 
 	namedWindow("src", 1);
 	namedWindow("dst", 1);
@@ -79,14 +83,15 @@ int main(int argc, char *argv[])
 	namedWindow("test1", 1);
 	namedWindow("binari", 1);
 
+	//@comment 始めの方のフレームは暗い可能性があるので読み飛ばす
+	for (int i = 0; i < 10; i++){
 	cap >> src_frame; //@comment 1フレーム取得
-	cap >> src_frame;
-	cap >> src_frame;
-	cap >> src_frame;
+	}
 
+	imshow("unresize",src_frame);
 	resize(src_frame, src_frame, Size(src_img_cols, src_img_rows), CV_8UC3); //@取得画像のリサイズ
 	//src_img = undist(src_img) ; //@comment カメラの歪みをとる(GoPro魚眼)
-
+	//imshow("resize",src_frame);
 
 	//------------------座標取得-----------------------------------------------
 	//@comment 画像中からマウスで4点を取得その後ESCキーを押すと変換処理が開始する
@@ -112,6 +117,8 @@ int main(int argc, char *argv[])
 
 	//@comment 変換(線形補完)
 	warpPerspective(src_frame, dst_img, perspective_matrix, src_frame.size(), INTER_LINEAR);
+//	warpPerspective(src_frame, dst_img, perspective_matrix, Size(600,600), INTER_LINEAR);
+
 
 	//@comment 変換前後の座標を描画
 	line(src_frame, pts1[0], pts1[1], Scalar(255, 0, 255), 2, CV_AA);
@@ -126,23 +133,18 @@ int main(int argc, char *argv[])
 	namedWindow("plotCoordinates", 1);
 	imshow("plotCoordinates", src_frame);
 
-	namedWindow("dst", 1);
-	imshow("dst", dst_img);
-
+	imshow("dst",dst_img);
 
 	int frame = 0; //@comment フレーム数保持変数
-
+	Mat plot_img;
+	dst_img.copyTo(plot_img);
 	set_target(target, allTarget);
 	target_itr = allTarget.begin();
-
+	int color_r = 0,color_g = 0,color_b = 0;
+	int color_flag = 0;
 	while (1){
 
-		if (target_itr == allTarget.end() - 1){
-			target_itr = allTarget.begin();
-		}
-
 		cap >> src_frame;
-
 		if (frame % 1 == 0){ //@comment　フレームの取得数を調節可能
 
 			//@comment 画像をリサイズ(大きすぎるとディスプレイに入りらないため)
@@ -185,6 +187,9 @@ int main(int argc, char *argv[])
 					// ターゲットの更新
 					std::cout << "UPDATE" << std::endl;
 					target_itr++;
+					if (target_itr == allTarget.end()){//@comment イテレータが最後まで行ったら最初に戻る
+						target_itr = allTarget.begin();
+					}
 				}
 				action = robot_action(P0, P1, *target_itr);
 				std::cout << "target: " << target_itr->x << ", " << target_itr->y << "	position: " << P1.x << ", " << P1.y
@@ -197,6 +202,12 @@ int main(int argc, char *argv[])
 			if (!point.y == 0){ //@comment point.y == 0の場合はexceptionが起こる( 0除算 )
 				//@comment 画像，円の中心座標，半径，色(青)，線太さ，種類(-1, CV_AAは塗りつぶし)
 				circle(dst_img, Point(point.x, point.y + 6 * ((1000 / point.y) + 1)), 8, Scalar(0, 0, 0), -1, CV_AA);
+				//@comment 重心点の移動履歴
+				circle(plot_img, Point(point.x, point.y + 6 * ((1000 / point.y) + 1)), 8, Scalar(0,0,255), -1, CV_AA);
+				if (waitKey(30) == 114){
+					namedWindow("plot_img", 1);
+					imshow("plot_img", plot_img);
+				}
 			}
 
 			//------------------ターゲットのプロット--------------------------------------
@@ -207,14 +218,11 @@ int main(int argc, char *argv[])
 				n++;
 			}
 			cv::circle(dst_img, cv::Point(*target_itr), 48, cv::Scalar(0, 0, 0), 3, 4);
-
 			cv::putText(dst_img, is_out(P1), cv::Point(10, 25), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 0, 255), 1.0, CV_AA);
 			cv::putText(dst_img, action, cv::Point(10, 50), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 0, 255), 1.0, CV_AA);
 
 
 			//------------------マスのプロット--------------------------------------
-			double w = (double)src_img_cols / (double)width;
-			double d = (double)src_img_rows / (double)depth;
 
 			for (int i = 0; i <= src_img_cols; i += 100){
 				for (int j = 0; j <= src_img_rows; j += 100){
@@ -224,7 +232,6 @@ int main(int argc, char *argv[])
 				}
 			}
 
-
 			//------------------直進領域のプロット--------------------------------------
 			cv::Point2i A = { 100, src_img_rows - 100 }, B = { 100, 100 }, C = { src_img_cols - 100, 100 }, D = { src_img_cols - 100, src_img_rows - 100 };
 
@@ -233,58 +240,27 @@ int main(int argc, char *argv[])
 			line(dst_img, Point(C), Point(D), Scalar(200, 0, 0), 3);
 			line(dst_img, Point(D), Point(A), Scalar(200, 0, 0), 3);
 
-
 			//---------------------表示部分----------------------------------------------
 
-			//選択した四隅を線で結ぶ
-			//line(dst_img, Point(Ax, Ay), Point(Bx, By), Scalar(200, 0, 0), 3);
-			//line(dst_img, Point(Bx, By), Point(Cx, Cy), Scalar(0, 200, 0), 3);
-			//line(dst_img, Point(Cx, Cy), Point(Dx, Dy), Scalar(200, 0, 0), 3);
-			//line(dst_img, Point(Dx, Dy), Point(Ax, Ay), Scalar(0, 200, 0), 3);
-
-			//imshow("drawing", src_img);
-			//---------------------変換後の画像に1m四方の升目形成----------------------------
-
-			//imshow("dst_img", dst_img);
-
-			//Mat Eximg = dst_img;
-			
-			/*
-			//内側領域と外側領域の作成
-			line(dst_img, Point(100 * w, 100 * d), Point(100 * w, (depth - 100)*d), Scalar(200, 0, 0), 2);
-			line(dst_img, Point(100 * w, 100 * d), Point((width - 100)*w, 100 * d), Scalar(200, 0, 0), 2);
-			line(dst_img, Point((width - 100)*w, 100 * d), Point((width - 100)*w, (depth - 100)*d), Scalar(200, 0, 0), 2);
-			line(dst_img, Point(100 * w, (depth - 100)*d), Point((width - 100)*w, (depth - 100)*d), Scalar(200, 0, 0), 2);
-			*/
-			//内側領域と外側領域の作成
-//			line(dst_img, Point(100, 100), Point(100, src_img_cols), Scalar(200, 0, 0), 2);
-	//		line(dst_img, Point(100, 100), Point(src_img_rows, 100), Scalar(200, 0, 0), 2);
-		//	line(dst_img, Point(src_img_rows, 100), Point(src_img_rows, src_img_cols), Scalar(200, 0, 0), 2);
-			//line(dst_img, Point(100, src_img_cols - 100), Point(src_img_rows, src_img_cols - 100), Scalar(200, 0, 0), 2);
-
-			//imshow("video", src_frame);
-			imshow("red_point", dst_img);//@comment 出力画像
+			resize(dst_img, dst_img, Size(1000,1000));
+			resize(colorExtra, colorExtra, Size(800, 800));
+			imshow("dst_image", dst_img);//@comment 出力画像
 			imshow("colorExt", colorExtra);//@comment 赤抽出画像
+			imshow("plot_img",plot_img);
 			//cout << "frame" << ct++ << endl; //@comment frame数表示
 			//write << dst_img;
 			std::cout << frame << std::endl;
-			if (src_frame.empty() || waitKey(30) >= 0)
+			if (src_frame.empty() || waitKey(30) == 113)
 			{
 				destroyAllWindows();
 				return 0;
 			}
 		}
 		frame++;
-		write << dst_img;
+	//	write << dst_img;
 	}
+
 	ofs.close(); //@comment ファイルストリームの解放
-}
-
-//@comment 2点間の距離取得関数
-double get_points_distance(Point2i point, Point2i pre_point){
-
-	return sqrt((point.x - pre_point.x) * (point.x - pre_point.x)
-		+ (point.y - pre_point.y) * (point.y - pre_point.y));
 }
 
 //@comment 重心取得用関数
@@ -495,6 +471,7 @@ bool is_update_target(cv::Point2i Current, cv::Point2i Target){
 	else return false;
 }
 
+//@comment 内外判定関数
 std::string is_out(cv::Point2i Robot){
 	cv::Point2i A = { 100, src_img_rows - 100 }, B = { 100, 100 }, C = { src_img_cols - 100, 100 }, D = { src_img_cols - 100, src_img_rows - 100 };
 	cv::Point2i BA = A - B, BC = C - B, BP = Robot - B;
