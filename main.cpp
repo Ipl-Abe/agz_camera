@@ -7,8 +7,9 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/opencv.hpp>
 
-static const int src_img_rows = 700;
-static const int src_img_cols = 800;
+static const int src_img_cols = 300; //width
+static const int src_img_rows = 300; //height
+
 
 using namespace cv;
 using namespace std;
@@ -18,6 +19,10 @@ Point2i calculate_center(Mat);
 void getCoordinates(int event, int x, int y, int flags, void* param);
 Mat undist(Mat);
 double get_points_distance(Point2i, Point2i);
+void set_target(cv::Point2i& targt, std::vector<cv::Point2i>& allTarget);
+std::string robot_action(cv::Point2i Current, cv::Point2i Previous, cv::Point2i Target);
+bool is_update_target(cv::Point2i Current, cv::Point2i Target);
+std::string is_out(cv::Point2i Robot);
 void colorExtraction(cv::Mat* src, cv::Mat* dst,
 	int code,
 	int ch1Lower, int ch1Upper,
@@ -40,18 +45,32 @@ ofstream ofs("out4.csv");
 //@動画出力用変数
 const string  str = "test.avi";
 
+Point2i target, P0 = { 0, 0 }, P1 = { 0, 0 };
+std::vector<Point2i> allTarget;
+std::vector<Point2i>::iterator target_itr;
+string action;
+Point2i a, b, c, d;	//内側領域の頂点
+int width;
+int depth;
 
 int main(int argc, char *argv[])
 {
 
+	cout << "please type width and depth of field (m)" << endl << "width : ";
+	cin >> width;
+	cout << "depth : ";
+	cin >> depth;
+
+	
+
 	//@comment カメラの呼び出し pcのカメラ : 0 webカメラ : 1 
 	VideoCapture cap(1);
 	cap.set(CV_CAP_PROP_FRAME_WIDTH, 640); //@comment webカメラの横幅を設定
-	cap.set(CV_CAP_PROP_FRAME_HEIGHT,480); //@comment webカメラの縦幅を設定
+	cap.set(CV_CAP_PROP_FRAME_HEIGHT, 480); //@comment webカメラの縦幅を設定
 	if (!cap.isOpened()) return -1; //@comment 呼び出しミスがあれば終了
 
-	VideoWriter write("out2.avi", CV_FOURCC('M','J','P','G'), cap.get(CV_CAP_PROP_FPS),
-					   cv::Size(src_frame.rows, src_frame.cols),true);
+	VideoWriter write("out2.avi", CV_FOURCC('M', 'J', 'P', 'G'), cap.get(CV_CAP_PROP_FPS),
+		cv::Size(src_frame.rows, src_frame.cols), true);
 	if (!write.isOpened()) return -1;
 
 	namedWindow("src", 1);
@@ -61,6 +80,10 @@ int main(int argc, char *argv[])
 	namedWindow("binari", 1);
 
 	cap >> src_frame; //@comment 1フレーム取得
+	cap >> src_frame;
+	cap >> src_frame;
+	cap >> src_frame;
+
 	resize(src_frame, src_frame, Size(src_img_cols, src_img_rows), CV_8UC3); //@取得画像のリサイズ
 	//src_img = undist(src_img) ; //@comment カメラの歪みをとる(GoPro魚眼)
 
@@ -78,7 +101,7 @@ int main(int argc, char *argv[])
 
 	//------------------透視変換-----------------------------------------------
 	Point2f pts1[] = { Point2f(Ax, Ay), Point2f(Bx, By),
-		Point2f(Cx, Cy), Point2f(Dx, Dy) }; 
+		Point2f(Cx, Cy), Point2f(Dx, Dy) };
 
 	Point2f pts2[] = { Point2f(0, src_img_rows), Point2f(0, 0),
 		Point2f(src_img_cols, 0), Point2f(src_img_cols, src_img_rows) };
@@ -109,10 +132,17 @@ int main(int argc, char *argv[])
 
 	int frame = 0; //@comment フレーム数保持変数
 
+	set_target(target, allTarget);
+	target_itr = allTarget.begin();
+
 	while (1){
 
+		if (target_itr == allTarget.end() - 1){
+			target_itr = allTarget.begin();
+		}
+
 		cap >> src_frame;
-		
+
 		if (frame % 1 == 0){ //@comment　フレームの取得数を調節可能
 
 			//@comment 画像をリサイズ(大きすぎるとディスプレイに入りらないため)
@@ -139,18 +169,69 @@ int main(int argc, char *argv[])
 
 			//---------------------重心取得---------------------------------------------
 			Point2i point = calculate_center(binari_2);//@comment momentで白色部分の重心を求める
-			cout << "posion: " << point.x << " " << point.y << endl;//@comment 重心点の表示
+			//cout << "posion: " << point.x << " " << point.y << endl;//@comment 重心点の表示
+			int ypos;
 			if (point.x != 0){
-				int ypos = src_img_rows - (point.y + 6 * ((1000 / point.y) + 1));
-				cout << point.x << " " << ypos << endl; //@comment 変換画像中でのロボットの座標(重心)
+				ypos = src_img_rows - (point.y + 6 * ((1000 / point.y) + 1));
+				//cout << point.x << " " << ypos << endl; //@comment 変換画像中でのロボットの座標(重心)
 				ofs << point.x << ", " << ypos << endl; //@comment 変換
 			}
+
+			//---------------------ロボットの動作取得------------------------------------
+			P1 = { point.x, src_img_rows - ypos };
+			if (target_itr != allTarget.end() && P1.x != 0 && P1.y != 0 && P0.x != 0 && P0.y != 0){
+				line(dst_img, P1, P0, Scalar(255, 0, 0), 2, CV_AA);
+				if (is_update_target(P1, *target_itr)){
+					// ターゲットの更新
+					std::cout << "UPDATE" << std::endl;
+					target_itr++;
+				}
+				action = robot_action(P0, P1, *target_itr);
+				std::cout << "target: " << target_itr->x << ", " << target_itr->y << "	position: " << P1.x << ", " << P1.y
+					<< is_out(P1) << action << std::endl;
+			}
+			P0 = P1;
+
 
 			//-------------------重心点のプロット----------------------------------------- 
 			if (!point.y == 0){ //@comment point.y == 0の場合はexceptionが起こる( 0除算 )
 				//@comment 画像，円の中心座標，半径，色(青)，線太さ，種類(-1, CV_AAは塗りつぶし)
-				circle(dst_img, Point(point.x, point.y + 6 * ((1000 / point.y) + 1)), 5, Scalar(200, 0, 0), -1, CV_AA);
+				circle(dst_img, Point(point.x, point.y + 6 * ((1000 / point.y) + 1)), 8, Scalar(0, 0, 0), -1, CV_AA);
 			}
+
+			//------------------ターゲットのプロット--------------------------------------
+			int n = 0;
+			for (vector<Point2i>::iterator itr = allTarget.begin(); itr != allTarget.end(); itr++){
+				cv::circle(dst_img, cv::Point(*itr), 48, cv::Scalar(255, 255, 0), 3, 4);
+				cv::putText(dst_img, std::to_string(n), cv::Point(*itr), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 0), 0.5, CV_AA);
+				n++;
+			}
+			cv::circle(dst_img, cv::Point(*target_itr), 48, cv::Scalar(0, 0, 0), 3, 4);
+
+			cv::putText(dst_img, is_out(P1), cv::Point(10, 25), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 0, 255), 1.0, CV_AA);
+			cv::putText(dst_img, action, cv::Point(10, 50), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 0, 255), 1.0, CV_AA);
+
+
+			//------------------マスのプロット--------------------------------------
+			double w = (double)src_img_cols / (double)width;
+			double d = (double)src_img_rows / (double)depth;
+
+			for (int i = 0; i <= src_img_cols; i += 100){
+				for (int j = 0; j <= src_img_rows; j += 100){
+
+					line(dst_img, Point(i, j), Point(i, src_img_cols), Scalar(200, 200, 200), 3);
+					line(dst_img, Point(i, j), Point(src_img_rows, j), Scalar(200, 200, 200), 3);
+				}
+			}
+
+
+			//------------------直進領域のプロット--------------------------------------
+			cv::Point2i A = { 100, src_img_rows - 100 }, B = { 100, 100 }, C = { src_img_cols - 100, 100 }, D = { src_img_cols - 100, src_img_rows - 100 };
+
+			line(dst_img, Point(A), Point(B), Scalar(200, 0, 0), 3);
+			line(dst_img, Point(B), Point(C), Scalar(200, 0, 0), 3);
+			line(dst_img, Point(C), Point(D), Scalar(200, 0, 0), 3);
+			line(dst_img, Point(D), Point(A), Scalar(200, 0, 0), 3);
 
 
 			//---------------------表示部分----------------------------------------------
@@ -167,26 +248,26 @@ int main(int argc, char *argv[])
 			//imshow("dst_img", dst_img);
 
 			//Mat Eximg = dst_img;
-
-			for (int i = 0; i <= src_img_cols; i += 100){
-				for (int j = 0; j <= src_img_rows; j += 100){
-
-					line(dst_img, Point(i, j), Point(i, src_img_cols), Scalar(200, 200, 200), 3);
-					line(dst_img, Point(i, j), Point(src_img_rows, j), Scalar(200, 200, 200), 3);
-				}
-			}
-
+			
+			/*
 			//内側領域と外側領域の作成
-			line(dst_img, Point(100, 100), Point(100, src_img_cols), Scalar(200, 0, 0), 2);
-			line(dst_img, Point(100, 100), Point(src_img_rows, 100), Scalar(200, 0, 0), 2);
-			line(dst_img, Point(src_img_rows, 100), Point(src_img_rows, src_img_cols), Scalar(200, 0, 0), 2);
-			line(dst_img, Point(100, src_img_cols-100), Point(src_img_rows, src_img_cols-100), Scalar(200, 0, 0), 2);
-		
+			line(dst_img, Point(100 * w, 100 * d), Point(100 * w, (depth - 100)*d), Scalar(200, 0, 0), 2);
+			line(dst_img, Point(100 * w, 100 * d), Point((width - 100)*w, 100 * d), Scalar(200, 0, 0), 2);
+			line(dst_img, Point((width - 100)*w, 100 * d), Point((width - 100)*w, (depth - 100)*d), Scalar(200, 0, 0), 2);
+			line(dst_img, Point(100 * w, (depth - 100)*d), Point((width - 100)*w, (depth - 100)*d), Scalar(200, 0, 0), 2);
+			*/
+			//内側領域と外側領域の作成
+//			line(dst_img, Point(100, 100), Point(100, src_img_cols), Scalar(200, 0, 0), 2);
+	//		line(dst_img, Point(100, 100), Point(src_img_rows, 100), Scalar(200, 0, 0), 2);
+		//	line(dst_img, Point(src_img_rows, 100), Point(src_img_rows, src_img_cols), Scalar(200, 0, 0), 2);
+			//line(dst_img, Point(100, src_img_cols - 100), Point(src_img_rows, src_img_cols - 100), Scalar(200, 0, 0), 2);
+
 			//imshow("video", src_frame);
 			imshow("red_point", dst_img);//@comment 出力画像
 			imshow("colorExt", colorExtra);//@comment 赤抽出画像
 			//cout << "frame" << ct++ << endl; //@comment frame数表示
 			//write << dst_img;
+			std::cout << frame << std::endl;
 			if (src_frame.empty() || waitKey(30) >= 0)
 			{
 				destroyAllWindows();
@@ -339,3 +420,107 @@ void colorExtraction(cv::Mat* src, cv::Mat* dst,
 	*dst = maskedImage;
 
 }
+
+//@comment ターゲット設定
+void set_target(cv::Point2i& targt, std::vector<cv::Point2i>& allTarget){
+
+	int height = src_img_rows;
+	int width = src_img_cols;
+	allTarget.clear();
+
+	int n = 0;
+	for (int j = 0; j < (height / 100) - 2; j++){
+		if (j % 2 == 0){
+			for (int i = 0; i < (width / 100) - 2; i++){
+				target.x = (i + 1) * width / (width / 100) + 50;	target.y = height - (j + 1) * height / (height / 100) - 50;
+				allTarget.push_back(target);
+				n++;
+			}
+		}
+		else{
+			for (int i = (width / 100) - 3; i >= 0; i--){
+				target.x = (i + 1) * width / (width / 100) + 50;	target.y = height - (j + 1) * height / (height / 100) - 50;
+				allTarget.push_back(target);
+				n++;
+			}
+		}
+	}
+}
+
+//@comment ロボットの動作決定関数
+std::string robot_action(cv::Point2i Current, cv::Point2i Previous, cv::Point2i Target){
+	cv::Point2i P0 = Current - Previous;
+	cv::Point2i P1 = Target - Current;
+
+	int dx1 = abs(Current.x - 100);
+	int dx2 = abs(Current.x - src_img_rows - 100);
+
+	double angle = asin(P0.cross(P1) / (sqrt(P0.x * P0.x + P0.y * P0.y) * sqrt(P1.x * P1.x + P1.y * P1.y))) / CV_PI * 180;
+	if (P0.dot(P1) >= 0){
+		if (P0.cross(P1) >= 0){
+			angle = 360.0 - angle;
+		}
+		else if (P0.cross(P1) < 0){
+			angle = -360.0 - angle;
+		}
+	}
+
+	if (-30 < angle && angle < 30){
+		return std::string("f");
+	}
+	else if (angle <= -30){
+		if ((dx1 < 50.0) || (dx2 < 50.0)){
+			return std::string("r (fast)");
+		}
+		else return std::string("r (slow)");
+	}
+	else{
+		if ((dx1 < 50.0) || (dx2 < 50.0)){
+			return std::string("l (fast)");
+		}
+		else return std::string("l (slow)");
+	}
+}
+
+//@comment true->ターゲット更新, false->ターゲット更新なし
+bool is_update_target(cv::Point2i Current, cv::Point2i Target){
+	//Target.y = src_img_rows - Target.y;
+	int dx = Current.x - Target.x;
+	int dy = Current.y - Target.y;
+	double d = sqrt(dx * dx + dy * dy);
+
+	if (d < 50.0){
+		return true;
+	}
+	else return false;
+}
+
+std::string is_out(cv::Point2i Robot){
+	cv::Point2i A = { 100, src_img_rows - 100 }, B = { 100, 100 }, C = { src_img_cols - 100, 100 }, D = { src_img_cols - 100, src_img_rows - 100 };
+	cv::Point2i BA = A - B, BC = C - B, BP = Robot - B;
+	cv::Point2i DC = C - D, DA = A - D, DP = Robot - D;
+	int c1, c2, c3, c4;
+	bool flag1 = false, flag2 = false;
+
+	line(dst_img, Point(A), Point(B), Scalar(200, 200, 200), 3);
+	line(dst_img, Point(B), Point(C), Scalar(200, 200, 200), 3);
+	line(dst_img, Point(C), Point(D), Scalar(200, 200, 200), 3);
+	line(dst_img, Point(D), Point(A), Scalar(200, 200, 200), 3);
+
+	c1 = BA.cross(BP);
+	c2 = BP.cross(BC);
+	c3 = DC.cross(DP);
+	c4 = DP.cross(DA);
+
+	if ((c1 >= 0 && c2 >= 0) || (c1 < 0 && c2 < 0)){
+		flag1 = true;
+	}
+	if ((c3 >= 0 && c4 >= 0) || (c3< 0 && c4 < 0)){
+		flag2 = true;
+	}
+	if (flag1 && flag2){
+		return "IN";
+	}
+	else return "OUT";
+}
+
